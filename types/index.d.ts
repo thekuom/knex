@@ -1543,7 +1543,7 @@ declare namespace Knex {
     references(columnName: string): ReferencingColumnBuilder;
     onDelete(command: string): ColumnBuilder;
     onUpdate(command: string): ColumnBuilder;
-    defaultTo(value: Value): ColumnBuilder;
+    defaultTo(value: Value | null): ColumnBuilder;
     unsigned(): ColumnBuilder;
     notNullable(): ColumnBuilder;
     nullable(): ColumnBuilder;
@@ -1852,6 +1852,16 @@ declare namespace Knex {
     acquireRawConnection(): Promise<any>;
     destroyRawConnection(connection: any): Promise<void>;
     validateConnection(connection: any): Promise<boolean>;
+  }
+
+  class QueryBuilder {
+    public static extend(
+      methodName: string,
+      fn: <TRecord extends {} = any, TResult = unknown[]>(
+        this: Knex<TRecord, TResult>,
+        ...args: any[]
+      ) => QueryBuilder<TRecord, TResult>
+    ): void;
   }
 }
 
