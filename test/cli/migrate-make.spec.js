@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 const { execCommand } = require('cli-testlab');
 const { expect } = require('chai');
@@ -7,9 +8,10 @@ const { expect } = require('chai');
 const KNEX = path.normalize(__dirname + '/../../bin/cli.js');
 const {
   migrationStubOptionSetup,
-  expectMigrationMatchesStub,
+  expectContentMatchesStub,
   setupFileHelper,
 } = require('./cli-test-utils');
+const { createTemp } = require('../../lib/util/fs');
 
 describe('migrate:make', () => {
   describe('-x option: make migration using a specific extension', () => {
@@ -27,6 +29,39 @@ describe('migrate:make', () => {
 
     before(() => {
       process.env.KNEX_PATH = '../knex.js';
+    });
+
+    it('Create new migration auto-creating migration directory when it does not exist', async () => {
+      const tmpDir = await createTemp();
+      const migrationsDirectory = path.join(tmpDir, 'abc/xyz/temp/migrations');
+      const knexfileContents = `
+        module.exports = {
+          client: 'sqlite3',
+          connection: {
+            filename: __dirname + '/test/jake-util/test.sqlite3',
+          },
+          migrations: {
+            directory: '${migrationsDirectory}',
+          },
+        };`;
+
+      fileHelper.createFile(
+        path.join(process.cwd(), 'knexfile.js'),
+        knexfileContents,
+        { isPathAbsolute: true }
+      );
+
+      await execCommand(
+        `node ${KNEX} migrate:make somename --knexpath=../knex.js`,
+        {
+          expectedOutput: 'Created Migration',
+        }
+      );
+
+      expect(fs.existsSync(migrationsDirectory)).to.equal(true);
+      expect(
+        fileHelper.fileGlobExists(`${migrationsDirectory}/*_somename.js`)
+      ).to.equal(1);
     });
 
     it('Create new migration without knexfile passed or existing in default location', () => {
@@ -252,7 +287,7 @@ development: {
         'test/jake-util/knexfile_migrations/*_somename.js'
       );
       expect(fileCount).to.equal(1);
-      expectMigrationMatchesStub(stubPath, migrationGlobPath, fileHelper);
+      expectContentMatchesStub(stubPath, migrationGlobPath, fileHelper);
     });
 
     it('Create a new migration with stub parameter in knexfile', async () => {
@@ -273,7 +308,7 @@ development: {
       const stubName = 'table.stub';
       const stubPath = `test/jake-util/knexfile-stubs/${stubName}`;
       expect(fileCount).to.equal(1);
-      expectMigrationMatchesStub(stubPath, migrationGlobPath, fileHelper);
+      expectContentMatchesStub(stubPath, migrationGlobPath, fileHelper);
     });
 
     it('Create a new migration with --stub <name> in config.migrations.directory', async () => {
@@ -293,7 +328,7 @@ development: {
         'test/jake-util/knexfile_migrations/*_somename.js'
       );
       expect(fileCount).to.equal(1);
-      expectMigrationMatchesStub(stubPath, migrationGlobPath, fileHelper);
+      expectContentMatchesStub(stubPath, migrationGlobPath, fileHelper);
     });
 
     it('Create a new migration with --stub <name> when file does not exist', async () => {

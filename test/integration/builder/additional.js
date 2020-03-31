@@ -1,10 +1,11 @@
-/*global expect*/
 /*eslint no-var:0, max-len:0 */
 'use strict';
 
+const { expect } = require('chai');
+
 const Knex = require('../../../knex');
 const _ = require('lodash');
-const bluebird = require('bluebird');
+const delay = require('../../../lib/util/delay');
 
 module.exports = function(knex) {
   describe('Additional', function() {
@@ -190,44 +191,6 @@ module.exports = function(knex) {
             ]);
           });
       });
-    });
-
-    it('should forward the .mapSeries() function from bluebird', function() {
-      const asyncTask = function() {
-        return new Promise(function(resolve, reject) {
-          const output = asyncTask.num++;
-          setTimeout(function() {
-            resolve(output);
-          }, Math.random() * 200);
-        });
-      };
-      asyncTask.num = 1;
-
-      const returnedValues = [];
-      return knex('accounts')
-        .select()
-        .limit(3)
-        .mapSeries(function(account) {
-          return asyncTask().then(function(number) {
-            returnedValues.push(number);
-          });
-        })
-        .then(function() {
-          expect(returnedValues[0] == 1);
-          expect(returnedValues[1] == 2);
-          expect(returnedValues[2] == 3);
-        });
-    });
-
-    it('should forward the .delay() function from bluebird', function() {
-      const startTime = new Date().valueOf();
-      return knex('accounts')
-        .select()
-        .limit(1)
-        .delay(300)
-        .then(function(accounts) {
-          expect(new Date().valueOf() - startTime > 300);
-        });
     });
 
     it('should truncate a table with truncate', function() {
@@ -490,7 +453,7 @@ module.exports = function(knex) {
 
     it('#2184 - should properly escape table name for SQLite columnInfo', function() {
       if (knex.client.driverName !== 'sqlite3') {
-        return;
+        return this.skip();
       }
 
       return knex.schema
@@ -514,6 +477,52 @@ module.exports = function(knex) {
           });
         });
     });
+
+    if (knex.client.driverName === 'oracledb') {
+      const oracledb = require('oracledb');
+      describe('test oracle stored procedures', function() {
+        it('create stored procedure', function() {
+          return knex
+            .raw(
+              `
+            CREATE OR REPLACE PROCEDURE SYSTEM.multiply (X IN NUMBER, Y IN NUMBER, OUTPUT OUT NUMBER)
+              IS
+              BEGIN
+                OUTPUT := X * Y;
+              END;`
+            )
+            .then(function(result) {
+              expect(result).to.be.an('array');
+            });
+        });
+
+        it('get outbound values from stored procedure', function() {
+          const bindVars = {
+            x: 6,
+            y: 7,
+            output: {
+              dir: oracledb.BIND_OUT,
+            },
+          };
+          return knex
+            .raw('BEGIN SYSTEM.MULTIPLY(:x, :y, :output); END;', bindVars)
+            .then(function(result) {
+              expect(result[0]).to.be.ok;
+              expect(result[0]).to.equal('42');
+            });
+        });
+
+        it('drop stored procedure', function() {
+          const bindVars = { x: 6, y: 7 };
+          return knex
+            .raw('drop procedure SYSTEM.MULTIPLY', bindVars)
+            .then(function(result) {
+              expect(result).to.be.ok;
+              expect(result).to.be.an('array');
+            });
+        });
+      });
+    }
 
     it('should allow renaming a column', function() {
       let countColumn;
@@ -656,10 +665,10 @@ module.exports = function(knex) {
     it('.timeout() should throw TimeoutError', function() {
       const driverName = knex.client.driverName;
       if (driverName === 'sqlite3') {
-        return;
+        return this.skip();
       } //TODO -- No built-in support for sleeps
       if (/redshift/.test(driverName)) {
-        return;
+        return this.skip();
       }
       const testQueries = {
         pg: function() {
@@ -693,7 +702,7 @@ module.exports = function(knex) {
         .catch(function(error) {
           expect(_.pick(error, 'timeout', 'name', 'message')).to.deep.equal({
             timeout: 200,
-            name: 'TimeoutError',
+            name: 'KnexTimeoutError',
             message:
               'Defined query timeout of 200ms exceeded when running query.',
           });
@@ -703,10 +712,10 @@ module.exports = function(knex) {
     it('.timeout(ms, {cancel: true}) should throw TimeoutError and cancel slow query', function() {
       const driverName = knex.client.driverName;
       if (driverName === 'sqlite3') {
-        return;
+        return this.skip();
       } //TODO -- No built-in support for sleeps
       if (/redshift/.test(driverName)) {
-        return;
+        return this.skip();
       }
 
       // There's unexpected behavior caused by knex releasing a connection back
@@ -750,7 +759,7 @@ module.exports = function(knex) {
         expect(addTimeout).to.throw(
           'Query cancelling not supported for this dialect'
         );
-        return;
+        return; // TODO: Use `this.skip()` here?
       }
 
       const getProcessesQueries = {
@@ -780,7 +789,7 @@ module.exports = function(knex) {
         .catch(function(error) {
           expect(_.pick(error, 'timeout', 'name', 'message')).to.deep.equal({
             timeout: 200,
-            name: 'TimeoutError',
+            name: 'KnexTimeoutError',
             message:
               'Defined query timeout of 200ms exceeded when running query.',
           });
@@ -789,10 +798,7 @@ module.exports = function(knex) {
           // This query will hang if a connection gets released back to the pool
           // too early.
           // 50ms delay since killing query doesn't seem to have immediate effect to the process listing
-          return bluebird
-            .resolve()
-            .then()
-            .delay(50)
+          return delay(50)
             .then(function() {
               return getProcessesQuery;
             })
@@ -814,14 +820,14 @@ module.exports = function(knex) {
         });
     });
 
-    it('.timeout(ms, {cancel: true}) should throw error if cancellation cannot acquire connection', function() {
+    it('.timeout(ms, {cancel: true}) should throw error if cancellation cannot acquire connection', async function() {
       // Only mysql/postgres query cancelling supported for now
       const driverName = knex.client.driverName;
       if (
         !_.startsWith(driverName, 'mysql') &&
         !_.startsWith(driverName, 'pg')
       ) {
-        return;
+        return this.skip();
       }
 
       // To make this test easier, I'm changing the pool settings to max 1.
@@ -857,27 +863,25 @@ module.exports = function(knex) {
 
       const query = testQueries[driverName]();
 
-      return query
-        .timeout(1, { cancel: true })
-        .then(function() {
-          throw new Error("Shouldn't have gotten here.");
-        })
-        .catch(function(error) {
-          expect(_.pick(error, 'timeout', 'name', 'message')).to.deep.equal({
-            timeout: 1,
-            name: 'TimeoutError',
-            message:
-              'After query timeout of 1ms exceeded, cancelling of query failed.',
-          });
-        })
-        .finally(() => knexDb.destroy());
+      try {
+        await expect(
+          query.timeout(1, { cancel: true })
+        ).to.eventually.be.rejected.and.to.deep.include({
+          timeout: 1,
+          name: 'KnexTimeoutError',
+          message:
+            'After query timeout of 1ms exceeded, cancelling of query failed.',
+        });
+      } finally {
+        await knexDb.destroy();
+      }
     });
 
-    it('.timeout(ms, {cancel: true}) should release connections after failing if connection cancellation throws an error', function() {
+    it('.timeout(ms, {cancel: true}) should release connections after failing if connection cancellation throws an error', async function() {
       // Only mysql/postgres query cancelling supported for now
       const driverName = knex.client.driverName;
       if (!_.startsWith(driverName, 'pg')) {
-        return;
+        return this.skip();
       }
 
       // To make this test easier, I'm changing the pool settings to max 1.
@@ -887,8 +891,6 @@ module.exports = function(knex) {
       knexConfig.pool.max = 2;
       knexConfig.pool.acquireTimeoutMillis = 100;
 
-      const knexDb = new Knex(knexConfig);
-
       const rawTestQueries = {
         pg: (sleepSeconds) => `SELECT pg_sleep(${sleepSeconds})`,
       };
@@ -896,6 +898,8 @@ module.exports = function(knex) {
       if (!Object.prototype.hasOwnProperty.call(rawTestQueries, driverName)) {
         throw new Error('Missing test query for driverName: ' + driverName);
       }
+
+      const knexDb = new Knex(knexConfig);
 
       const getTestQuery = (sleepSeconds = 10) => {
         const rawTestQuery = rawTestQueries[driverName](sleepSeconds);
@@ -905,6 +909,7 @@ module.exports = function(knex) {
       const knexPrototype = Object.getPrototypeOf(knexDb.client);
       const originalWrappedCancelQueryCall =
         knexPrototype._wrappedCancelQueryCall;
+
       knexPrototype._wrappedCancelQueryCall = (conn) => {
         return knexPrototype.query(conn, {
           method: 'raw',
@@ -915,32 +920,27 @@ module.exports = function(knex) {
       const queryTimeout = 10;
       const secondQueryTimeout = 11;
 
-      return getTestQuery()
-        .timeout(queryTimeout, { cancel: true })
-        .then(function() {
-          throw new Error("Shouldn't have gotten here.");
-        })
-        .catch(function(error) {
-          expect(_.pick(error, 'timeout', 'name', 'message')).to.deep.equal({
-            timeout: queryTimeout,
-            name: 'error',
-            message: `After query timeout of ${queryTimeout}ms exceeded, cancelling of query failed.`,
-          });
-        })
-        .then(() => {
-          knexPrototype._wrappedCancelQueryCall = originalWrappedCancelQueryCall;
-          return getTestQuery().timeout(secondQueryTimeout, { cancel: true });
-        })
-        .catch(function(error) {
-          expect(_.pick(error, 'timeout', 'name', 'message')).to.deep.equal({
-            timeout: secondQueryTimeout,
-            name: 'TimeoutError',
-            message: `Defined query timeout of ${secondQueryTimeout}ms exceeded when running query.`,
-          });
-        })
-        .finally(() => {
-          return knexDb.destroy();
+      try {
+        await expect(
+          getTestQuery().timeout(queryTimeout, { cancel: true })
+        ).to.be.eventually.rejected.and.deep.include({
+          timeout: queryTimeout,
+          name: 'error',
+          message: `After query timeout of ${queryTimeout}ms exceeded, cancelling of query failed.`,
         });
+
+        knexPrototype._wrappedCancelQueryCall = originalWrappedCancelQueryCall;
+
+        await expect(
+          getTestQuery().timeout(secondQueryTimeout, { cancel: true })
+        ).to.be.eventually.rejected.and.deep.include({
+          timeout: secondQueryTimeout,
+          name: 'KnexTimeoutError',
+          message: `Defined query timeout of ${secondQueryTimeout}ms exceeded when running query.`,
+        });
+      } finally {
+        await knexDb.destroy();
+      }
     });
 
     it('Event: query-response', function() {
@@ -1089,7 +1089,7 @@ module.exports = function(knex) {
       });
       it('should capture stack trace on raw query', () => {
         return knex.raw('select * from some_nonexisten_table').catch((err) => {
-          expect(err.stack.split('\n')[2]).to.match(/at Function\.raw \(/); // the index 2 might need adjustment if the code is refactored
+          expect(err.stack.split('\n')[2]).to.match(/at Object\.raw \(/); // the index 2 might need adjustment if the code is refactored
           expect(typeof err.originalStack).to.equal('string');
         });
       });

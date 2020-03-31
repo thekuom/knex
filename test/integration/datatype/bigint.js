@@ -1,6 +1,6 @@
-/*global expect*/
-
 'use strict';
+
+const { expect } = require('chai');
 
 module.exports = function(knex) {
   const bigintTimestamp = 1464294366973;
@@ -28,7 +28,7 @@ module.exports = function(knex) {
           .where('expiry', unsafeBigint)
           .select('*');
       })
-      .map(function(row) {
+      .then(function(row) {
         // triggers request execution
       })
       .then(function() {
@@ -36,7 +36,7 @@ module.exports = function(knex) {
           .where('expiry', negativeUnsafeBigint)
           .select('*');
       })
-      .map(function(row) {
+      .then(function(row) {
         // triggers request execution
       })
       .catch(function(err) {
@@ -79,16 +79,16 @@ module.exports = function(knex) {
           .where('expiry', bigintTimestamp)
           .select('*');
       })
-      .map(function(row) {
-        expect(row.id).to.equal('positive');
+      .then(function(rows) {
+        rows.forEach((row) => expect(row.id).to.equal('positive'));
       })
       .then(function() {
         return knex(tableName)
           .where('expiry', negativeBigintTimestamp)
           .select('*');
       })
-      .map(function(row) {
-        expect(row.id).to.equal('negative');
+      .then(function(rows) {
+        rows.forEach((row) => expect(row.id).to.equal('negative'));
       })
       .catch(function(err) {
         expect(err).to.be.undefined;
@@ -97,7 +97,7 @@ module.exports = function(knex) {
 
   it('#1781 - decimal value must not be converted to integer', function() {
     if (!/mssql/i.test(knex.client.driverName)) {
-      return;
+      return this.skip();
     }
 
     const tableName = 'decimal_test';

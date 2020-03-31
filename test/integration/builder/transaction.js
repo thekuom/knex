@@ -1,11 +1,12 @@
-/*global expect*/
-
 'use strict';
 
-const Bluebird = require('bluebird');
+const { expect } = require('chai');
+
 const Knex = require('../../../knex');
 const _ = require('lodash');
 const sinon = require('sinon');
+const { KnexTimeoutError } = require('../../../lib/util/timeout');
+const delay = require('../../../lib/util/delay');
 
 module.exports = function(knex) {
   // Certain dialects do not have proper insert with returning, so if this is true
@@ -78,12 +79,7 @@ module.exports = function(knex) {
         });
     });
 
-    it('should be able to commit transactions (TODO: fix random oracle fail)', function() {
-      if (knex.client.driverName == 'oracledb') {
-        this.skip();
-        return;
-      }
-
+    it('should be able to commit transactions', function() {
       let id = null;
       return knex
         .transaction(function(t) {
@@ -166,12 +162,7 @@ module.exports = function(knex) {
         });
     });
 
-    it('should be able to commit transactions with a resolved trx query (TODO: fix random oracle fail)', function() {
-      if (knex.client.driverName == 'oracledb') {
-        this.skip();
-        return;
-      }
-
+    it('should be able to commit transactions with a resolved trx query', function() {
       let id = null;
       return knex
         .transaction(function(trx) {
@@ -264,7 +255,7 @@ module.exports = function(knex) {
         });
     });
 
-    it('should be able to run schema methods', function() {
+    it('should be able to run schema methods', async () => {
       let __knexUid,
         count = 0;
       const err = new Error('error message');
@@ -299,13 +290,14 @@ module.exports = function(knex) {
             expect(count).to.equal(5);
             return knex('test_schema_migrations').count('*');
           })
+          .then(() => expect.fail('should never reach this line'))
           .catch(function(e) {
             // https://www.postgresql.org/docs/8.2/static/errcodes-appendix.html
             expect(e.code).to.equal('42P01');
           });
       } else {
         let id = null;
-        return knex
+        const promise = knex
           .transaction(function(trx) {
             return trx('accounts')
               .returning('id')
@@ -357,10 +349,13 @@ module.exports = function(knex) {
             if (!constid) {
               expect(resp).to.have.length(1);
             }
-          })
-          .finally(function() {
-            return knex.schema.dropTableIfExists('test_schema_transactions');
           });
+
+        try {
+          await promise;
+        } finally {
+          await knex.schema.dropTableIfExists('test_schema_transactions');
+        }
       }
     });
 
@@ -396,6 +391,54 @@ module.exports = function(knex) {
               return trx.select('*').from('accounts');
             });
           });
+      });
+    });
+
+    it('#2213 - should wait for sibling transactions to finish', function() {
+      if (/redshift/i.test(knex.client.driverName)) {
+        return this.skip();
+      }
+
+      const first = delay(50);
+      const second = first.then(() => delay(50));
+      return knex.transaction(function(trx) {
+        return Promise.all([
+          trx.transaction(function(trx2) {
+            return first;
+          }),
+          trx.transaction(function(trx3) {
+            return second;
+          }),
+        ]);
+      });
+    });
+
+    it('#2213 - should not evaluate a Transaction container until all previous siblings have completed', async function() {
+      if (/redshift/i.test(knex.client.driverName)) {
+        return this.skip();
+      }
+
+      const TABLE_NAME = 'test_sibling_transaction_order';
+      await knex.schema.dropTableIfExists(TABLE_NAME);
+      await knex.schema.createTable(TABLE_NAME, function(t) {
+        t.string('username');
+      });
+
+      await knex.transaction(async function(trx) {
+        await Promise.all([
+          trx.transaction(async function(trx1) {
+            // This delay provides `trx2` with an opportunity to run first.
+            await delay(200);
+            await trx1(TABLE_NAME).insert({ username: 'bob' });
+          }),
+          trx.transaction(async function(trx2) {
+            const rows = await trx2(TABLE_NAME);
+
+            // Even though `trx1` was delayed, `trx2` waited patiently for `trx1`
+            // to finish.  Therefore, `trx2` discovers that there is already 1 row.
+            expect(rows.length).to.equal(1);
+          }),
+        ]);
       });
     });
 
@@ -467,7 +510,7 @@ module.exports = function(knex) {
       });
     });
 
-    it('#1694, #1703 it should return connections to pool if acquireConnectionTimeout is triggered', function() {
+    it('#1694, #1703 it should return connections to pool if acquireConnectionTimeout is triggered', async function() {
       const knexConfig = _.clone(knex.client.config);
       knexConfig.pool = {
         min: 0,
@@ -477,14 +520,9 @@ module.exports = function(knex) {
 
       const db = new Knex(knexConfig);
 
-      return db
-        .transaction(function() {
-          return db.transaction(function() {});
-        })
-        .then(function() {
-          throw new Error('should not get here');
-        })
-        .catch(Bluebird.TimeoutError, function(error) {});
+      await expect(
+        db.transaction(() => db.transaction(() => ({})))
+      ).to.be.rejectedWith(KnexTimeoutError);
     });
 
     /**
@@ -552,7 +590,7 @@ module.exports = function(knex) {
             expect(false).to.be.ok;
           })
           .catch(function(err) {
-            expect(err).should.exist;
+            expect(err).to.exist;
             expect(err.originalError).to.equal(originalError);
             // confirm transaction rolled back
             return querySampleRow().then(function(resp) {
@@ -647,6 +685,105 @@ module.exports = function(knex) {
 
         return builder;
       });
+    });
+
+    it('#3690 does not swallow exception when error during transaction occurs', async function() {
+      const mysqlKillConnection = async (connection) =>
+        knex.raw('KILL ?', [connection.threadId]);
+      const killConnectionMap = {
+        mysql: mysqlKillConnection,
+        mysql2: mysqlKillConnection,
+        pg: async (connection) =>
+          knex.raw('SELECT pg_terminate_backend(?)', [connection.processID]),
+        /* TODO FIX
+        mssql: async (connection, trx) => {
+          const id = (await trx.raw('select @@SPID as id'))[0].id;
+          return knex.raw(`KILL ${id}`);
+        },
+        oracledb: async (connection, trx) => {
+          // https://stackoverflow.com/a/28815685
+          const row = (await trx.raw(
+            `SELECT * FROM V$SESSION WHERE AUDSID = Sys_Context('USERENV', 'SESSIONID')`
+          ))[0];
+          return knex.raw(
+            `Alter System Kill Session '${row.SID}, ${
+              row['SERIAL#']
+            }' immediate`
+          );
+        },
+      */
+      };
+
+      const killConnection = killConnectionMap[knex.client.driverName];
+      if (!killConnection) {
+        this.skip();
+        return;
+      }
+
+      await expect(
+        knex.transaction(async (trx2) => {
+          await killConnection(await trx2.client.acquireConnection(), trx2);
+          await trx2.transaction(async () => 2);
+        })
+      ).to.be.rejected;
+    });
+  });
+
+  it('handles promise rejections in nested Transactions (#3706)', async function() {
+    const fn = sinon.stub();
+    process.on('unhandledRejection', fn);
+    try {
+      await knex.transaction(async function(trx1) {
+        // These two lines together will cause the underlying Transaction
+        // to be rejected.  Prior to #3706, this rejection would be unhandled.
+        const trx2 = await trx1.transaction(undefined, {
+          doNotRejectOnRollback: false,
+        });
+        await trx2.rollback();
+
+        await expect(trx2.executionPromise).to.have.been.rejected;
+      });
+
+      expect(fn).have.not.been.called;
+    } finally {
+      process.removeListener('unhandledRejection', fn);
+    }
+  });
+
+  context('when a `connection` is passed in explicitly', function() {
+    beforeEach(function() {
+      this.sandbox = sinon.createSandbox();
+    });
+
+    afterEach(function() {
+      this.sandbox.restore();
+    });
+
+    it('assumes the caller will release the connection', async function() {
+      this.sandbox.spy(knex.client, 'releaseConnection');
+      const conn = await knex.client.acquireConnection();
+      try {
+        await knex.transaction(
+          async function(trx) {
+            // Do nothing!
+          },
+          { connection: conn }
+        );
+      } catch (err) {
+        // Do nothing.  The transaction could have failed due to some other
+        // bug, and it might have still released the connection in the process.
+      }
+
+      expect(knex.client.releaseConnection).to.have.not.been.calledWith(conn);
+
+      // By design, this line will only be reached if the connection
+      // was never released.
+      knex.client.releaseConnection(conn);
+
+      // Note: It's still possible that the test might fail due to a Timeout
+      // even after concluding.  This is because the underlying implementation
+      // might have opened another connection by mistake, but never actually
+      // closed it. (Ex: this was the case for OracleDB before fixing #3721)
     });
   });
 };

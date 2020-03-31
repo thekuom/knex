@@ -1,6 +1,8 @@
-/*global expect, d*/
-
 'use strict';
+
+const { expect } = require('chai');
+
+const { TEST_TIMESTAMP } = require('../../constants');
 
 module.exports = function(knex) {
   describe('Updates', function() {
@@ -70,18 +72,7 @@ module.exports = function(knex) {
         });
     });
 
-    it('should immediately return updated value for other connections when updating row to DB returns (TODO: fix oracle fail)', function() {
-      if (knex.client.driverName == 'oracledb') {
-        // TODO: this test was added to catch strange random fails with oracle
-        // currently it looks like at least oracle transactions seem to return before
-        // they are actually committed to database...
-
-        // if those selects are changed to forUpdate() then the test seem to pass fine
-
-        this.skip();
-        return;
-      }
-
+    it('should immediately return updated value for other connections when updating row to DB returns', function() {
       return knex('accounts').then((res) => {
         function runTest() {
           return Promise.all(
@@ -297,10 +288,10 @@ module.exports = function(knex) {
                 last_name: 'UpdatedTest',
                 email: 'test100@example.com',
                 logins: 1,
-                balance: 12.24,
+                balance: 12.240001,
                 about: 'Lorem ipsum Dolore labore incididunt enim.',
-                created_at: d,
-                updated_at: d,
+                created_at: TEST_TIMESTAMP,
+                updated_at: TEST_TIMESTAMP,
                 phone: null,
               },
             ]
@@ -342,8 +333,8 @@ module.exports = function(knex) {
                 logins: 1,
                 balance: 12.240000000000002,
                 about: 'Lorem ipsum Dolore labore incididunt enim.',
-                created_at: d,
-                updated_at: d,
+                created_at: TEST_TIMESTAMP,
+                updated_at: TEST_TIMESTAMP,
                 phone: null,
               },
             ]

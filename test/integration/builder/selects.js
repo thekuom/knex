@@ -1,9 +1,12 @@
-/*global expect, d*/
 'use strict';
+
+const { expect } = require('chai');
 
 const _ = require('lodash');
 const assert = require('assert');
 const Runner = require('../../../lib/runner');
+
+const { TEST_TIMESTAMP } = require('../../constants');
 
 module.exports = function(knex) {
   describe('Selects', function() {
@@ -216,7 +219,7 @@ module.exports = function(knex) {
 
     it('allows you to stream with mysql dialect options', function() {
       if (!_.includes(['mysql', 'mysql2'], knex.client.driverName)) {
-        return;
+        return this.skip();
       }
       const rows = [];
       return knex('accounts')
@@ -556,8 +559,8 @@ module.exports = function(knex) {
                   logins: 1,
                   balance: 0,
                   about: 'Lorem ipsum Dolore labore incididunt enim.',
-                  created_at: d,
-                  updated_at: d,
+                  created_at: TEST_TIMESTAMP,
+                  updated_at: TEST_TIMESTAMP,
                   phone: null,
                 },
               ]
@@ -575,8 +578,8 @@ module.exports = function(knex) {
                   logins: 1,
                   balance: 0,
                   about: 'Lorem ipsum Dolore labore incididunt enim.',
-                  created_at: d,
-                  updated_at: d,
+                  created_at: TEST_TIMESTAMP,
+                  updated_at: TEST_TIMESTAMP,
                   phone: null,
                 },
               ]
@@ -594,8 +597,8 @@ module.exports = function(knex) {
                   logins: 1,
                   balance: 0,
                   about: 'Lorem ipsum Dolore labore incididunt enim.',
-                  created_at: d,
-                  updated_at: d,
+                  created_at: TEST_TIMESTAMP,
+                  updated_at: TEST_TIMESTAMP,
                   phone: null,
                 },
               ]
@@ -613,8 +616,8 @@ module.exports = function(knex) {
                   logins: 1,
                   balance: 0,
                   about: 'Lorem ipsum Dolore labore incididunt enim.',
-                  created_at: d,
-                  updated_at: d,
+                  created_at: TEST_TIMESTAMP,
+                  updated_at: TEST_TIMESTAMP,
                   phone: null,
                 },
               ]
@@ -632,8 +635,8 @@ module.exports = function(knex) {
                   logins: 1,
                   balance: 0,
                   about: 'Lorem ipsum Dolore labore incididunt enim.',
-                  created_at: d,
-                  updated_at: d,
+                  created_at: TEST_TIMESTAMP,
+                  updated_at: TEST_TIMESTAMP,
                   phone: null,
                 },
               ]
@@ -651,8 +654,8 @@ module.exports = function(knex) {
                   logins: 1,
                   balance: 0,
                   about: 'Lorem ipsum Dolore labore incididunt enim.',
-                  created_at: d,
-                  updated_at: d,
+                  created_at: TEST_TIMESTAMP,
+                  updated_at: TEST_TIMESTAMP,
                   phone: null,
                 },
               ]
@@ -780,6 +783,58 @@ module.exports = function(knex) {
           .select()
           .orderBy('email'),
       ]);
+    });
+
+    it('supports "distinct on"', async function() {
+      const builder = knex('accounts')
+        .select('email', 'logins')
+        .distinctOn('id')
+        .orderBy('id');
+      if (knex.client.driverName !== 'pg') {
+        let error;
+        try {
+          await builder;
+        } catch (e) {
+          error = e;
+        }
+        expect(error.message).to.eql(
+          '.distinctOn() is currently only supported on PostgreSQL'
+        );
+        return;
+      }
+      return builder.testSql(function(tester) {
+        tester(
+          'pg',
+          'select distinct on ("id") "email", "logins" from "accounts" order by "id" asc',
+          [],
+          [
+            {
+              email: 'test@example.com',
+              logins: 1,
+            },
+            {
+              email: 'test2@example.com',
+              logins: 1,
+            },
+            {
+              email: 'test3@example.com',
+              logins: 2,
+            },
+            {
+              email: 'test4@example.com',
+              logins: 2,
+            },
+            {
+              email: 'test5@example.com',
+              logins: 2,
+            },
+            {
+              email: 'test6@example.com',
+              logins: 2,
+            },
+          ]
+        );
+      });
     });
 
     it('does "orWhere" cases', function() {
@@ -1126,7 +1181,7 @@ module.exports = function(knex) {
 
     it('select for update locks selected row', function() {
       if (knex.client.driverName === 'sqlite3') {
-        return;
+        return this.skip();
       }
 
       return knex('test_default_table')
@@ -1157,7 +1212,7 @@ module.exports = function(knex) {
 
     it('select for update locks only some tables, #2834', function() {
       if (knex.client.driverName !== 'pg') {
-        return;
+        return this.skip();
       }
 
       return knex('test_default_table')
@@ -1209,7 +1264,7 @@ module.exports = function(knex) {
         knex.client.driverName === 'sqlite3' ||
         knex.client.driverName === 'oracledb'
       ) {
-        return;
+        return this.skip();
       }
 
       return knex('test_default_table')
@@ -1251,7 +1306,7 @@ module.exports = function(knex) {
     it('forUpdate().skipLocked() with order by should return the first non-locked row', async function() {
       // Note: this test doesn't work properly on MySQL - see https://bugs.mysql.com/bug.php?id=67745
       if (knex.client.driverName !== 'pg') {
-        return;
+        return this.skip();
       }
 
       const rowName = 'row for skipLocked() test #1';
@@ -1289,7 +1344,7 @@ module.exports = function(knex) {
         knex.client.driverName !== 'pg' &&
         knex.client.driverName !== 'mysql'
       ) {
-        return;
+        return this.skip();
       }
 
       const rowName = 'row for skipLocked() test #2';
@@ -1323,7 +1378,7 @@ module.exports = function(knex) {
         knex.client.driverName !== 'pg' &&
         knex.client.driverName !== 'mysql'
       ) {
-        return;
+        return this.skip();
       }
 
       const rowName = 'row for noWait() test';
@@ -1379,6 +1434,39 @@ module.exports = function(knex) {
             throw err;
         }
       }
+    });
+
+    it('select from subquery', async function() {
+      const subquery = knex.from('accounts').whereBetween('id', [3, 5]);
+      return knex
+        .pluck('id')
+        .orderBy('id')
+        .from(subquery)
+        .then(
+          (rows) => {
+            expect(rows).to.deep.equal([3, 4, 5]);
+            expect(knex.client.driverName).to.oneOf(['sqlite3', 'oracledb']);
+          },
+          (e) => {
+            switch (knex.client.driverName) {
+              case 'mysql':
+              case 'mysql2':
+                expect(e.errno).to.equal(1248);
+                break;
+              case 'pg':
+                expect(e.message).to.contain('must have an alias');
+                break;
+
+              case 'mssql':
+                expect(e.message).to.contain(
+                  "Incorrect syntax near the keyword 'order'"
+                );
+                break;
+              default:
+                throw e;
+            }
+          }
+        );
     });
   });
 };

@@ -1,22 +1,11 @@
+/* eslint-disable no-console */
 'use strict';
 
 require('source-map-support').install();
 
-global.sinon = require('sinon');
+require('./chai-setup');
 
-const chai = (global.chai = require('chai'));
-
-chai.use(require('sinon-chai'));
-chai.should();
-
-const bluebird = require('bluebird');
-global.expect = chai.expect;
-global.d = new Date();
-
-bluebird.longStackTraces();
-
-// '.timeout(ms, {cancel: true}) should throw error if cancellation cannot acquire connection' produced unhandled rejection and it's unclear how to avoid that
-const EXPECTED_REJECTION_COUNT = 2;
+const EXPECTED_REJECTION_COUNT = 0;
 const rejectionLog = [];
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled rejection:', reason);
@@ -37,6 +26,12 @@ process.on('exit', (code) => {
     }
   }
   console.log('No unhandled exceptions');
+});
+
+describe('Util Tests', function() {
+  // Unit Tests for utilities.
+  require('./unit/query/string');
+  require('./unit/util/fs');
 });
 
 describe('Query Building Tests', function() {
@@ -83,7 +78,11 @@ if (config.sqlite3) {
 
 describe('CLI tests', function() {
   this.timeout(process.env.KNEX_TEST_TIMEOUT || 5000);
+  require('./cli/help.spec');
   require('./cli/knexfile-test.spec');
+  require('./cli/migrate.spec');
   require('./cli/migrate-make.spec');
+  require('./cli/seed.spec');
+  require('./cli/seed-make.spec');
   require('./cli/version.spec');
 });

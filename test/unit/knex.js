@@ -1,7 +1,6 @@
 const Knex = require('../../lib/index');
 const QueryBuilder = require('../../lib/query/builder');
 const { expect } = require('chai');
-const bluebird = require('bluebird');
 const sqliteConfig = require('../knexfile').sqlite3;
 const sqlite3 = require('sqlite3');
 const { noop } = require('lodash');
@@ -169,9 +168,9 @@ describe('knex', () => {
     ).to.equal(null);
   });
 
-  it('passes queryContext to wrapIdentifier in raw query', () => {
+  it('passes queryContext to wrapIdentifier in raw query', function() {
     if (!sqliteConfig) {
-      return;
+      return this.skip();
     }
 
     const knex = Knex(
@@ -211,9 +210,9 @@ describe('knex', () => {
       });
   });
 
-  it('passes queryContext to wrapIdentifier in raw query in transaction', () => {
+  it('passes queryContext to wrapIdentifier in raw query in transaction', function() {
     if (!sqliteConfig) {
-      return;
+      return this.skip();
     }
 
     const knex = Knex(
@@ -276,20 +275,19 @@ describe('knex', () => {
     ).to.equal(null);
   });
 
-  it('transaction of a copy with userParams retains userparams', () => {
+  it('transaction of a copy with userParams retains userparams', function() {
     if (!sqliteConfig) {
-      return;
+      return this.skip();
     }
 
     const knex = Knex(sqliteConfig);
 
     const knexWithParams = knex.withUserParams({ userParam: '451' });
 
-    return knexWithParams.transaction((trx) => {
+    return knexWithParams.transaction(async (trx) => {
       expect(trx.userParams).to.deep.equal({
         userParam: '451',
       });
-      return bluebird.resolve();
     });
   });
 
@@ -471,20 +469,19 @@ describe('knex', () => {
     });
   });
 
-  it('creating transaction copy with user params should throw an error', () => {
+  it('creating transaction copy with user params should throw an error', function() {
     if (!sqliteConfig) {
-      return;
+      return this.skip();
     }
 
     const knex = Knex(sqliteConfig);
 
-    return knex.transaction((trx) => {
+    return knex.transaction(async (trx) => {
       expect(() => {
         trx.withUserParams({ userParam: '451' });
       }).to.throw(
         /Cannot set user params on a transaction - it can only inherit params from main knex instance/
       );
-      return bluebird.resolve();
     });
   });
 
@@ -508,9 +505,9 @@ describe('knex', () => {
   });
 
   describe('async stack traces', () => {
-    it('should capture stack trace on query builder instantiation', () => {
+    it('should capture stack trace on query builder instantiation', function() {
       if (!sqliteConfig) {
-        return;
+        return this.skip();
       }
 
       const knex = Knex(
