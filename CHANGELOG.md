@@ -1,6 +1,103 @@
 # Master (Unreleased)
 
+# 0.21.1 - 28 April, 2020
+
+### New features:
+
+- CLI: Add migrate:unlock command, truncate on forceFreeMigrationsLock #3822
+- CLI: Add support for cjs files by default #3829
+
+### Bug fixes:
+
+- CLI: Fix inference of seed/migration extension from knexfile extension #3814
+- rewrite delay to not node-only version. Fixes compatibility with browsers #3820
+
+### Test / internal changes:
+
+- Update dependencies. Explicitly support Node.js 14 #3825 #3830
+
+# 0.21.0 - 18 April, 2020
+
+### Improvements
+
+- Reduce size of lodash in bundle #3804
+
+### Breaking changes
+
+- Dropped support for Node 8
+- Breaking upstream change in `pg-query-stream`: `Changed stream.close to stream.destroy which is the official way to terminate a readable stream. This is a breaking change if you rely on the stream.close method on pg-query-stream...though should be just a find/replace type operation to upgrade as the semantics remain very similar (not exactly the same, since internals are rewritten, but more in line with how streams are "supposed" to behave).`
+
+### Test / internal changes:
+
+- Updated Tarn.js to a version 3.0.0
+- Updated mkdirp to a version 1.0.4
+- Updated examples to use ES2015 style #3810
+
+# 0.20.15 - 16 April, 2020
+
+### Bug fixes:
+
+- Support for `.finally(..)` on knex's Promise-alikes #3800
+
+### Typings:
+
+- Add types for `.distinctOn` #3784
+
+# 0.20.14 - 13 April, 2020
+
+### New features:
+
+- CLI: adds support for asynchronous knexfile loading #3748
+- Add clearGroup method #3771
+
+### Typings:
+
+- Support Raw types for insert, where, update #3730
+- Add typings for MigrationSource #3756
+- Update signature of orderBy to support QueryBuilder inside array #3757
+- Add toSQL and toString to SchemaBuilder #3758
+- `interface Knex` and `function Knex` should have the same types #3787
+- Fix minor issues around typings #3765
+
+### Test / internal changes:
+
+- Minor test internal enhancements #3747
+- Minor improvements on the usage of fs utilities #3749
+- Split tests in groups #3785
+
+# 0.20.13 - 23 March, 2020
+
+### Bug fixes:
+
+- Correctly handle dateToString escaping without timezone passed #3742 
+- Make protocol length check more defensive #3744
+
+### Typings:
+
+- Make the ChainableInterface conform to Promise<T> #3724
+
+# 0.20.12 - 19 March, 2020
+
+### Bug fixes:
+
+- Added missing call to _reject in Transactor#transaction #3706
+- Fix method binding on knex proxy #3717
+- Oracle: Transaction_OracleDB can use config.connection #3731
+
+### Typings:
+
+- Fix incorrect type signature of Having #3719
+
+### Test / internal changes:
+
+- Cleanup/remove transaction stalling #3716
+- Rewrote Transaction#acquireConnection() methods to use async #3707 
+
 # 0.20.11 - 26 February, 2020
+
+### Breaking changes:
+
+- Knex returns native JS promises instead of Bluebird ones. This means that you no longer use such methods as `map`, `spread` and `reduce` on QueryBuilder instance.
 
 ### New features:
 
@@ -16,7 +113,7 @@
 
 ### Test / internal changes:
 
-- Remove dependency on bluebird methods from sources #3683
+- Remove dependency on Bluebird methods from sources #3683
 - Cleanup and extract Transaction Workflow logic #3674
 
 # 0.20.10 - 13 February, 2020

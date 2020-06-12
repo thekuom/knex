@@ -3,24 +3,24 @@
 const parseConnection = require('../../lib/util/parse-connection');
 const test = require('tape');
 
-test('parses standard connections', function(t) {
+test('parses standard connections', function (t) {
   t.plan(1);
-  t.deepEqual(
+  t.deepLooseEqual(
     parseConnection('postgres://username:pass@path.to.some-url:6000/testdb'),
     {
       client: 'postgres',
       connection: {
         user: 'username',
         password: 'pass',
-        host: 'path.to.some-url',
         port: '6000',
+        host: 'path.to.some-url',
         database: 'testdb',
       },
     }
   );
 });
 
-test('parses standard connections without password', function(t) {
+test('parses standard connections without password', function (t) {
   t.plan(1);
   t.deepEqual(
     parseConnection('mysql://username@path.to.some-url:3306/testdb'),
@@ -36,7 +36,7 @@ test('parses standard connections without password', function(t) {
   );
 });
 
-test('mysql connection protocol with query string params', function(t) {
+test('mysql connection protocol with query string params', function (t) {
   t.plan(1);
   t.deepEqual(
     parseConnection('mysql://user:pass@path.to.some-url:3306/testdb?foo=bar'),
@@ -54,7 +54,7 @@ test('mysql connection protocol with query string params', function(t) {
   );
 });
 
-test('parses mssql connections, aliasing host to server', function(t) {
+test('parses mssql connections, aliasing host to server', function (t) {
   t.plan(1);
   const mssql = {
     client: 'mssql',
@@ -72,7 +72,7 @@ test('parses mssql connections, aliasing host to server', function(t) {
   );
 });
 
-test('parses mssql connections, aliasing host to server and adding extra params', function(t) {
+test('parses mssql connections, aliasing host to server and adding extra params', function (t) {
   t.plan(1);
   const mssql = {
     client: 'mssql',
@@ -93,7 +93,7 @@ test('parses mssql connections, aliasing host to server and adding extra params'
   );
 });
 
-test('assume a path is mysql', function(t) {
+test('assume a path is mysql', function (t) {
   t.plan(1);
   t.deepEqual(parseConnection('/path/to/file.db'), {
     client: 'sqlite3',
@@ -103,9 +103,9 @@ test('assume a path is mysql', function(t) {
   });
 });
 
-test('#852, ssl param with PG query string', function(t) {
+test('#852, ssl param with PG query string', function (t) {
   t.plan(1);
-  t.deepEqual(
+  t.deepLooseEqual(
     parseConnection('postgres://user:password@host:0000/database?ssl=true')
       .connection,
     {
@@ -119,9 +119,9 @@ test('#852, ssl param with PG query string', function(t) {
   );
 });
 
-test('support postgresql connection protocol', function(t) {
+test('support postgresql connection protocol', function (t) {
   t.plan(1);
-  t.deepEqual(
+  t.deepLooseEqual(
     parseConnection('postgresql://user:password@host:0000/database?ssl=true')
       .connection,
     {

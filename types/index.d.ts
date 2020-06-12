@@ -4,7 +4,7 @@
 //                 Matt R. Wilson <https://github.com/mastermatt>
 //                 Satana Charuwichitratana <https://github.com/micksatana>
 //                 Shrey Jain <https://github.com/shreyjain1994>
-// TypeScript Version: 3.4
+// TypeScript Version: 3.7
 
 /// <reference types="node" />
 
@@ -21,7 +21,7 @@ import { ConnectionOptions } from "tls";
 //
 // This is primarily to prevent type incompatibilities where target can be unknown.
 // While unknown can be assigned to any, Partial<unknown> can't be.
-type SafePartial<T> = T extends {} ? Partial<T> : any;
+type SafePartial<T> = Partial<AnyOrUnknownToOther<T, {}>>;
 
 type MaybeArray<T> = T | T[];
 
@@ -30,6 +30,7 @@ type StrKey<T> = string & keyof T;
 // If T is unknown then convert to any, else retain original
 type UnknownToAny<T> = unknown extends T ? any : T;
 type AnyToUnknown<T> = unknown extends T ? unknown : T;
+type AnyOrUnknownToOther<T1, T2> = unknown extends T1 ? T2 : T1;
 
 // Intersection conditionally applied only when TParams is non-empty
 // This is primarily to keep the signatures more intuitive.
@@ -322,7 +323,7 @@ interface PgTableOptions {
   only?: boolean;
 }
 
-interface Knex<TRecord extends {} = any, TResult = any[]>
+interface Knex<TRecord extends {} = any, TResult = unknown[]>
   extends Knex.QueryInterface<TRecord, TResult>, events.EventEmitter {
   <TRecord2 = TRecord, TResult2 = DeferredKeySelection<TRecord2, never>[]>(
     tableName?: Knex.TableDescriptor | Knex.AliasDict,
@@ -365,7 +366,7 @@ interface Knex<TRecord extends {} = any, TResult = any[]>
   ref: Knex.RefBuilder;
 }
 
-declare function Knex<TRecord = any, TResult = unknown[]>(
+declare function Knex<TRecord extends {} = any, TResult = unknown[]>(
   config: Knex.Config | string
 ): Knex<TRecord, TResult>;
 
@@ -432,6 +433,7 @@ declare namespace Knex {
     into: Table<TRecord, TResult>;
     table: Table<TRecord, TResult>;
     distinct: Distinct<TRecord, TResult>;
+    distinctOn: DistinctOn<TRecord, TResult>;
 
     // Joins
     join: Join<TRecord, TResult>;
@@ -526,6 +528,7 @@ declare namespace Knex {
         : TResult
     >;
     clearWhere(): QueryBuilder<TRecord, TResult>;
+    clearGroup(): QueryBuilder<TRecord, TResult>;
     clearOrder(): QueryBuilder<TRecord, TResult>;
     clearHaving(): QueryBuilder<TRecord, TResult>;
     clearCounters(): QueryBuilder<TRecord, TResult>;
@@ -626,7 +629,41 @@ declare namespace Knex {
       callback: QueryCallbackWithArgs<TRecord, any>,
       ...args: any[]
     ): QueryBuilder<TRecord2, TResult2>;
-
+    update<
+      K1 extends StrKey<TRecord>,
+      K2 extends StrKey<TRecord>,
+      TResult2 = DeferredIndex.Augment<
+        UnwrapArrayMember<TResult>,
+        TRecord,
+        K2
+      >[]
+    >(
+      columnName: K1,
+      value: DbColumn<TRecord[K1]>,
+      returning: K2
+    ): QueryBuilder<TRecord, TResult2>;
+    update<
+      K1 extends StrKey<TRecord>,
+      K2 extends StrKey<TRecord>,
+      TResult2 = DeferredKeySelection.Augment<
+        UnwrapArrayMember<TResult>,
+        TRecord,
+        K2
+      >[]
+    >(
+      columnName: K1,
+      value: DbColumn<TRecord[K1]>,
+      returning: readonly K2[]
+    ): QueryBuilder<TRecord, TResult2>;
+    update<K extends keyof TRecord>(
+      columnName: K,
+      value: DbColumn<TRecord[K]>
+    ): QueryBuilder<TRecord, number>;
+    update<TResult2 = SafePartial<TRecord>[]>(
+      columnName: string,
+      value: Value,
+      returning: string | readonly string[]
+    ): QueryBuilder<TRecord, TResult2>;
     update(
       data: DbRecordArr<TRecord>,
       returning: '*'
@@ -678,41 +715,7 @@ declare namespace Knex {
     update<TResult2 = number>(
       data: DbRecordArr<TRecord>
     ): QueryBuilder<TRecord, TResult2>;
-    update<
-      K1 extends StrKey<TRecord>,
-      K2 extends StrKey<TRecord>,
-      TResult2 = DeferredIndex.Augment<
-        UnwrapArrayMember<TResult>,
-        TRecord,
-        K2
-      >[]
-    >(
-      columnName: K1,
-      value: DbColumn<TRecord[K1]>,
-      returning: K2
-    ): QueryBuilder<TRecord, TResult2>;
-    update<
-      K1 extends StrKey<TRecord>,
-      K2 extends StrKey<TRecord>,
-      TResult2 = DeferredKeySelection.Augment<
-        UnwrapArrayMember<TResult>,
-        TRecord,
-        K2
-      >[]
-    >(
-      columnName: K1,
-      value: DbColumn<TRecord[K1]>,
-      returning: readonly K2[]
-    ): QueryBuilder<TRecord, TResult2>;
-    update<K extends keyof TRecord>(
-      columnName: K,
-      value: DbColumn<TRecord[K]>
-    ): QueryBuilder<TRecord, number>;
-    update<TResult2 = SafePartial<TRecord>[]>(
-      columnName: string,
-      value: Value,
-      returning: string | readonly string[]
-    ): QueryBuilder<TRecord, TResult2>;
+
     update<TResult2 = number>(columnName: string, value: Value): QueryBuilder<TRecord, TResult2>;
 
     returning(column: '*'): QueryBuilder<TRecord, DeferredKeySelection<TRecord, never>[]>;
@@ -906,6 +909,19 @@ declare namespace Knex {
 
   interface Distinct<TRecord extends {}, TResult = {}[]>
     extends ColumnNameQueryBuilder<TRecord, TResult> {}
+
+  interface DistinctOn<TRecord extends {}, TResult = {}[]> {
+    <ColNameUT extends keyof TRecord>(
+      ...columnNames: readonly ColNameUT[]
+    ): QueryBuilder<TRecord, TResult>;
+
+    <ColNameUT extends keyof TRecord>(
+      columnNames: readonly ColNameUT[]
+    ): QueryBuilder<TRecord, TResult>;
+
+    (...columnNames: readonly string[]): QueryBuilder<TRecord, TResult>;
+    (columnNames: readonly string[]): QueryBuilder<TRecord, TResult>;
+  }
 
   interface JoinCallback {
     (this: JoinClause, join: JoinClause): void;
@@ -1337,11 +1353,7 @@ declare namespace Knex {
   interface RawQueryBuilder<TRecord = any, TResult = unknown[]> {
     <TResult2 = TResult>(
       sql: string,
-      ...bindings: readonly RawBinding[]
-    ): QueryBuilder<TRecord, TResult2>;
-    <TResult2 = TResult>(
-      sql: string,
-      bindings: readonly RawBinding[] | ValueDict
+      bindings?: readonly RawBinding[] | ValueDict | RawBinding
     ): QueryBuilder<TRecord, TResult2>;
     <TResult2 = TResult>(raw: Raw<TResult2>): QueryBuilder<
       TRecord,
